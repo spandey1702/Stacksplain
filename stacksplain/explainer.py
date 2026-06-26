@@ -1,7 +1,12 @@
 import os
+import time
+import logging
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
+_RETRY_DELAYS = [1, 2, 4]
 
 load_dotenv()
 
@@ -40,12 +45,22 @@ class Explainer:
         self._model = os.getenv("GOOGLE_API_MODEL", "gemini-2.0-flash")
 
     def explain(self, error_text: str) -> str:
-        response = self._client.models.generate_content(
-            model=self._model,
-            contents=error_text,
-            config=types.GenerateContentConfig(
-                system_instruction=_SYSTEM_PROMPT,
-                temperature=0.2,
-            ),
-        )
-        return response.text
+        last_exc: Exception | None = None
+        for attempt, delay in enumerate([0] + _RETRY_DELAYS, start=1):
+            if delay:
+                logger.warning(f"Retrying in {delay}s (attempt {attempt}/{len(_RETRY_DELAYS) + 1})...")
+                time.sleep(delay)
+            try:
+                response = self._client.models.generate_content(
+                    model=self._model,
+                    contents=error_text,
+                    config=types.GenerateContentConfig(
+                        system_instruction=_SYSTEM_PROMPT,
+                        temperature=0.2,
+                    ),
+                )
+                return response.text
+            except Exception as e:
+                logger.exception(f"API error (attempt {attempt}): {e}")
+                last_exc = e
+        raise last_exc  # type: ignore[misc]
