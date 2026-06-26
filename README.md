@@ -1,5 +1,7 @@
 # stacksplain
 
+![Tests](https://github.com/spandey1702/Stacksplain/actions/workflows/test.yml/badge.svg)
+
 Paste any error or stack trace and get a plain-English explanation with a suggested fix — in seconds.
 
 ```
