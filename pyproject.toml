@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wtferror"
+version = "0.1.0"
+description = "Paste any error or stack trace and get a plain-English explanation with a suggested fix."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "google-genai>=1.0.0",
+    "click>=8.1.0",
+    "python-dotenv>=1.0.1",
+]
+
+[project.scripts]
+wtferror = "wtferror.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["wtferror*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
+]
