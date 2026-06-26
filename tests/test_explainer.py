@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("GOOGLE_API_KEY", "test-key")
 
-from wtferror.explainer import Explainer
+from stacksplain.explainer import Explainer
 
 
 class TestExplainer:
@@ -17,7 +17,7 @@ class TestExplainer:
         mock_response = MagicMock()
         mock_response.text = "WHAT:\nTest\n\nWHY:\nTest\n\nFIX:\nTest\n\nAVOID:\nTest"
 
-        with patch("wtferror.explainer.genai.Client") as mock_client:
+        with patch("stacksplain.explainer.genai.Client") as mock_client:
             instance = mock_client.return_value
             instance.models.generate_content.return_value = mock_response
 
@@ -33,7 +33,7 @@ class TestExplainer:
         mock_response = MagicMock()
         mock_response.text = "WHAT:\nfoo"
 
-        with patch("wtferror.explainer.genai.Client") as mock_client:
+        with patch("stacksplain.explainer.genai.Client") as mock_client:
             instance = mock_client.return_value
             instance.models.generate_content.return_value = mock_response
 

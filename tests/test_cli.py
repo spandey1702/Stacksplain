@@ -2,7 +2,7 @@ import os
 import pytest
 from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
-from wtferror.cli import main
+from stacksplain.cli import main
 
 os.environ.setdefault("GOOGLE_API_KEY", "test-key")
 
@@ -11,7 +11,7 @@ MOCK_EXPLANATION = "WHAT:\nThe object is null.\n\nWHY:\nNot initialized.\n\nFIX:
 
 @pytest.fixture
 def mock_explainer():
-    with patch("wtferror.cli.Explainer") as mock:
+    with patch("stacksplain.cli.Explainer") as mock:
         instance = mock.return_value
         instance.explain.return_value = MOCK_EXPLANATION
         yield instance
