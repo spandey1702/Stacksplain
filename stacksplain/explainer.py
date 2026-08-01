@@ -1,8 +1,7 @@
 import os
 import time
 import logging
-from google import genai
-from google.genai import types
+import anthropic
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -36,13 +35,13 @@ Rules:
 
 class Explainer:
     def __init__(self):
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError(
-                "GOOGLE_API_KEY not set. Add it to your .env file or export it in your shell."
+                "ANTHROPIC_API_KEY not set. Add it to your .env file or export it in your shell."
             )
-        self._client = genai.Client(api_key=api_key)
-        self._model = os.getenv("GOOGLE_API_MODEL", "gemini-2.0-flash")
+        self._client = anthropic.Anthropic(api_key=api_key)
+        self._model = os.getenv("ANTHROPIC_API_MODEL", "claude-sonnet-5")
 
     def explain(self, error_text: str) -> str:
         last_exc: Exception | None = None
@@ -51,15 +50,14 @@ class Explainer:
                 logger.warning(f"Retrying in {delay}s (attempt {attempt}/{len(_RETRY_DELAYS) + 1})...")
                 time.sleep(delay)
             try:
-                response = self._client.models.generate_content(
+                response = self._client.messages.create(
                     model=self._model,
-                    contents=error_text,
-                    config=types.GenerateContentConfig(
-                        system_instruction=_SYSTEM_PROMPT,
-                        temperature=0.2,
-                    ),
+                    max_tokens=2000,
+                    system=_SYSTEM_PROMPT,
+                    output_config={"effort": "low"},
+                    messages=[{"role": "user", "content": error_text}],
                 )
-                return response.text
+                return next(block.text for block in response.content if block.type == "text")
             except Exception as e:
                 logger.exception(f"API error (attempt {attempt}): {e}")
                 last_exc = e

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 from stacksplain.cli import main
 
-os.environ.setdefault("GOOGLE_API_KEY", "test-key")
+os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
 MOCK_EXPLANATION = "WHAT:\nThe object is null.\n\nWHY:\nNot initialized.\n\nFIX:\nAdd null check.\n\nAVOID:\nUse constructor injection."
 

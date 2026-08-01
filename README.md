@@ -14,18 +14,18 @@ stacksplain "NullPointerException at UserService.java:42"
 pip install stacksplain
 ```
 
-Requires a [Google Gemini API key](https://aistudio.google.com).
+Requires an [Anthropic API key](https://platform.claude.com).
 
 ## Setup
 
 ```bash
-export GOOGLE_API_KEY=your_key_here
+export ANTHROPIC_API_KEY=your_key_here
 ```
 
 Or add it to a `.env` file in your working directory:
 
 ```
-GOOGLE_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here
 ```
 
 ## Usage
