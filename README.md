@@ -45,6 +45,12 @@ stacksplain "TypeError: cannot unpack non-sequence int"
 stacksplain --file error.log
 ```
 
+**Scan your project to locate the bug, not just explain it:**
+```bash
+stacksplain --scan "NullPointerException at UserService.java:42"
+```
+Run this from inside your project directory (or pass `--path` to point elsewhere). Instead of guessing from the error text alone, Claude searches and reads your actual source files before answering, so the output cites a real file/line it confirmed on disk instead of a plausible-sounding guess.
+
 ## Output
 
 ```

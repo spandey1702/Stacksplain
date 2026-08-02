@@ -2,10 +2,17 @@ import sys
 import click
 from . import __version__
 from .explainer import Explainer
+from .locator import Locator
 
 
 def _print_result(result: str) -> None:
-    labels = {"WHAT:": "cyan", "WHY:": "yellow", "FIX:": "green", "AVOID:": "magenta"}
+    labels = {
+        "LOCATION:": "blue",
+        "WHAT:": "cyan",
+        "WHY:": "yellow",
+        "FIX:": "green",
+        "AVOID:": "magenta",
+    }
     for line in result.splitlines():
         color = next((c for label, c in labels.items() if line.startswith(label)), None)
         if color:
@@ -17,8 +24,21 @@ def _print_result(result: str) -> None:
 @click.command()
 @click.argument("error", required=False)
 @click.option("--file", "-f", "error_file", type=click.File("r"), help="Read error from a file.")
+@click.option(
+    "--scan",
+    "-s",
+    is_flag=True,
+    help="Search the current project's files to locate the error before explaining it.",
+)
+@click.option(
+    "--path",
+    "scan_path",
+    default=".",
+    show_default=True,
+    help="Project root to search when using --scan.",
+)
 @click.version_option(version=__version__, prog_name="stacksplain")
-def main(error: str | None, error_file):
+def main(error: str | None, error_file, scan: bool, scan_path: str):
     """
     Explain any error or stack trace in plain English.
 
@@ -26,6 +46,7 @@ def main(error: str | None, error_file):
     Usage:
       stacksplain "NullPointerException at UserService.java:42"
       stacksplain --file error.log
+      stacksplain --scan "NullPointerException at UserService.java:42"
       ./myapp 2>&1 | stacksplain
     """
     if error_file:
@@ -43,8 +64,12 @@ def main(error: str | None, error_file):
         sys.exit(1)
 
     try:
-        explainer = Explainer()
-        result = explainer.explain(error_text)
+        if scan:
+            locator = Locator(root=scan_path)
+            result = locator.locate(error_text)
+        else:
+            explainer = Explainer()
+            result = explainer.explain(error_text)
         click.echo()
         _print_result(result)
         click.echo()
