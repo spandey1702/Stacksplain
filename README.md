@@ -67,6 +67,16 @@ AVOID:
 Use isinstance() to validate the return type before unpacking.
 ```
 
+With `--scan`, a `LOCATION:` section is added on top, citing the actual file and line Claude found and read:
+
+```
+LOCATION:
+app/services/parser.py:42 — `return_value, extra = parse_response(raw)`
+
+WHAT:
+...
+```
+
 ## Supported languages
 
 Language-agnostic. Works with Java, Python, Node.js, Go, Rust, and any other stack trace format.
