@@ -48,3 +48,20 @@ class TestExplainer:
 
             call_args = instance.messages.create.call_args
             assert "SegmentationFault at core.c:99" in str(call_args)
+
+    def test_explain_redacts_secrets_before_sending(self):
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = "WHAT:\nfoo"
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+
+        with patch("stacksplain.explainer.anthropic.Anthropic") as mock_client:
+            instance = mock_client.return_value
+            instance.messages.create.return_value = mock_response
+
+            Explainer().explain("could not connect to postgres://admin:hunter2@db:5432/app")
+
+            sent = str(instance.messages.create.call_args)
+            assert "hunter2" not in sent
+            assert "[REDACTED]" in sent

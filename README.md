@@ -81,6 +81,20 @@ WHAT:
 
 Language-agnostic. Works with Java, Python, Node.js, Go, Rust, and any other stack trace format.
 
+## Privacy and safety
+
+Your error text, and with `--scan` the code Claude reads, is sent to the Anthropic API. Before anything is sent, Stacksplain:
+
+- **Masks secrets** as `[REDACTED]`: API keys and tokens with known formats (Anthropic, OpenAI, AWS, GitHub, Slack, JWTs, `Bearer` tokens), passwords in URLs such as `postgres://user:pass@host`, private key blocks, and values assigned to secret-sounding names like `api_key = "..."` or `PASSWORD=...`.
+- **Never opens credential files** with `--scan`: `.env`, `*.pem`, `*.key`, `id_rsa*`, `credentials*`, `*.tfvars`, `*.tfstate` and similar.
+- **Stays inside your project**: paths and symlinks that resolve outside `--path` are refused, and files over 1 MB are skipped.
+- **Stops after 10 tool steps** with `--scan`, so a confusing error can't run up a long session.
+
+## Limitations
+
+- Redaction is pattern-based. A secret with no recognizable format, stored under an ordinary name (`x = "a8f3k2..."`), will not be caught. Don't run `--scan` on code with hardcoded production credentials.
+- `--scan` reads plain-text files only. Binary files are skipped.
+
 ## License
 
 MIT

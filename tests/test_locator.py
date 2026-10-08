@@ -67,6 +67,48 @@ class TestReadFileLines:
         assert "only has" in result
 
 
+class TestScanSafety:
+    def test_search_skips_env_file(self, project):
+        (project / ".env").write_text("ANTHROPIC_API_KEY=sk-secret\n")
+        result = Locator(root=str(project))._search_codebase("ANTHROPIC_API_KEY")
+        assert "sk-secret" not in result
+
+    def test_read_refuses_env_file(self, project):
+        (project / ".env").write_text("SECRET=1\n")
+        result = Locator(root=str(project))._read_file_lines(".env", 1, 5)
+        assert "secrets" in result
+
+    def test_read_refuses_symlink_to_secret(self, project):
+        (project / ".env").write_text("SECRET=1\n")
+        (project / "notes.txt").symlink_to(project / ".env")
+        result = Locator(root=str(project))._read_file_lines("notes.txt", 1, 5)
+        assert "secrets" in result
+
+    def test_search_skips_symlink_outside_root(self, project, tmp_path_factory):
+        outside = tmp_path_factory.mktemp("outside") / "private.txt"
+        outside.write_text("top secret\n")
+        (project / "link.txt").symlink_to(outside)
+        result = Locator(root=str(project))._search_codebase("top secret")
+        assert "link.txt" not in result
+
+    def test_search_redacts_secret_in_code(self, project):
+        (project / "config.py").write_text('API_KEY = "sk-ant-api03-abcdefghijklmnop"\n')
+        result = Locator(root=str(project))._search_codebase("API_KEY")
+        assert "config.py:1:" in result
+        assert "sk-ant-api03" not in result
+
+    def test_read_redacts_secret_in_code(self, project):
+        (project / "config.py").write_text('DATABASE_URL = "postgres://admin:hunter2@db/app"\n')
+        result = Locator(root=str(project))._read_file_lines("config.py", 1, 1)
+        assert "hunter2" not in result
+        assert "[REDACTED]" in result
+
+    def test_search_skips_large_files(self, project):
+        (project / "big.log").write_text("needle\n" + "x" * 1_100_000)
+        result = Locator(root=str(project))._search_codebase("needle")
+        assert "No matches" in result
+
+
 class TestLocatorInit:
     def test_raises_without_api_key(self, tmp_path):
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False):
@@ -89,3 +131,12 @@ class TestLocate:
                     result = locator.locate("ZeroDivisionError in app.py")
                     assert "LOCATION:" in result
                     assert "app.py:2" in result
+
+    def test_locate_stops_after_max_turns(self, project):
+        looping = [MagicMock(stop_reason="tool_use", content=[]) for _ in range(20)]
+        with patch("stacksplain.locator.anthropic.Anthropic"):
+            with patch("stacksplain.locator.beta_tool", side_effect=lambda f: f):
+                locator = Locator(root=str(project))
+                with patch.object(locator._client.beta.messages, "tool_runner", return_value=looping):
+                    result = locator.locate("ZeroDivisionError in app.py")
+        assert "Couldn't pin down" in result

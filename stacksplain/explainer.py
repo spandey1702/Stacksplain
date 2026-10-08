@@ -3,6 +3,7 @@ import time
 import logging
 import anthropic
 from dotenv import load_dotenv
+from .redact import redact
 
 logger = logging.getLogger(__name__)
 _RETRY_DELAYS = [1, 2, 4]
@@ -30,7 +31,8 @@ Rules:
 - Be concise. Developers are busy.
 - Be specific. "Check your code" is useless.
 - If the language/framework is identifiable from the stack trace, tailor your answer to it.
-- If multiple root causes are equally likely, list them in order of probability."""
+- If multiple root causes are equally likely, list them in order of probability.
+- Values shown as [REDACTED] were masked for privacy. Don't ask for them."""
 
 
 class Explainer:
@@ -55,7 +57,7 @@ class Explainer:
                     max_tokens=2000,
                     system=_SYSTEM_PROMPT,
                     output_config={"effort": "low"},
-                    messages=[{"role": "user", "content": error_text}],
+                    messages=[{"role": "user", "content": redact(error_text)}],
                 )
                 return next(block.text for block in response.content if block.type == "text")
             except Exception as e:
