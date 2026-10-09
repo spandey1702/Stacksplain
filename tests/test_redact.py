@@ -43,6 +43,15 @@ class TestAssignments:
         assert result.startswith(kept)
         assert MASK in result
 
+    @pytest.mark.parametrize("line, expected", [
+        ('password = "correct horse battery"', f'password = "{MASK}"'),
+        ("passphrase_secret: 'two words here'", f"passphrase_secret: '{MASK}'"),
+        ('pwd = "abc"', f'pwd = "{MASK}"'),
+        ('{"api_key": "it\'s a key", "user": "bob"}', f'{{"api_key": "{MASK}", "user": "bob"}}'),
+    ])
+    def test_masks_whole_quoted_value(self, line, expected):
+        assert redact(line) == expected
+
     @pytest.mark.parametrize("line", [
         "token_count = 5",
         "max_tokens=2000",

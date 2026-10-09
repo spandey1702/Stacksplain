@@ -3,6 +3,9 @@ import click
 from . import __version__
 from .explainer import Explainer
 from .locator import Locator
+from .redact import redact
+
+_DRY_RUN_LIST_LIMIT = 50
 
 
 def _print_result(result: str) -> None:
@@ -21,6 +24,30 @@ def _print_result(result: str) -> None:
             click.echo(line)
 
 
+def _print_dry_run(error_text: str, scan: bool, scan_path: str) -> None:
+    click.echo(click.style("DRY RUN: nothing was sent.", fg="yellow", bold=True))
+    click.echo()
+    click.echo(click.style("Error text, as it would be sent:", bold=True))
+    click.echo(redact(error_text))
+    click.echo()
+    click.echo("Also sent: Stacksplain's built-in instructions (no data from your machine).")
+    if not scan:
+        return
+
+    locator = Locator(root=scan_path, require_api_key=False)
+    searchable, excluded = locator.scan_summary()
+    click.echo()
+    click.echo(click.style(f"--scan: Claude could search and read {searchable} files in {locator.root}", bold=True))
+    click.echo("Search results and file excerpts are masked the same way before they're sent.")
+    if excluded:
+        click.echo()
+        click.echo(click.style("Never opened:", bold=True))
+        for rel, reason in excluded[:_DRY_RUN_LIST_LIMIT]:
+            click.echo(f"  {rel}  ({reason})")
+        if len(excluded) > _DRY_RUN_LIST_LIMIT:
+            click.echo(f"  ...and {len(excluded) - _DRY_RUN_LIST_LIMIT} more")
+
+
 @click.command()
 @click.argument("error", required=False)
 @click.option("--file", "-f", "error_file", type=click.File("r"), help="Read error from a file.")
@@ -37,8 +64,13 @@ def _print_result(result: str) -> None:
     show_default=True,
     help="Project root to search when using --scan.",
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be sent to the API, after masking, without sending anything.",
+)
 @click.version_option(version=__version__, prog_name="stacksplain")
-def main(error: str | None, error_file, scan: bool, scan_path: str):
+def main(error: str | None, error_file, scan: bool, scan_path: str, dry_run: bool):
     """
     Explain any error or stack trace in plain English.
 
@@ -47,6 +79,7 @@ def main(error: str | None, error_file, scan: bool, scan_path: str):
       stacksplain "NullPointerException at UserService.java:42"
       stacksplain --file error.log
       stacksplain --scan "NullPointerException at UserService.java:42"
+      stacksplain --scan --dry-run --file error.log
       ./myapp 2>&1 | stacksplain
     """
     if error_file:
@@ -62,6 +95,10 @@ def main(error: str | None, error_file, scan: bool, scan_path: str):
     if not error_text:
         click.echo("Error input is empty.", err=True)
         sys.exit(1)
+
+    if dry_run:
+        _print_dry_run(error_text, scan, scan_path)
+        return
 
     try:
         if scan:

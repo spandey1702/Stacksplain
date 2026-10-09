@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- `--dry-run`: shows the masked error text, how many files `--scan` could open, and every file it never will, with the reason. Sends nothing and needs no API key
+- `.stacksplainignore`: gitignore-style list of files and folders `--scan` must never open
+
 ### Security
 - Secrets are masked as `[REDACTED]` in error text, search results and file excerpts before anything is sent to the API
 - `--scan` never opens credential files (`.env`, keys, certificates, Terraform vars/state)

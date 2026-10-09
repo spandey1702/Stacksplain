@@ -19,12 +19,21 @@ _BEARER = re.compile(r"(?i)\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}")
 _URL_PASSWORD = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://[^\s:/@]+:)[^\s@/]+(@)")
 
 # A secret-sounding name assigned a value, e.g. `api_key = "..."` or `PASSWORD: ...`.
-# The value must be a whole token, not code: no calls, indexing, or attribute access
+_SECRET_NAME = (
+    r"\b[\w.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)[\w.-]*"
+)
+
+# Quoted value: mask everything up to the matching quote, so passphrases with spaces don't leak.
+_QUOTED_ASSIGNMENT = re.compile(
+    rf"""(?i)({_SECRET_NAME}["']?\s*[:=]\s*)(["'])[^\n]+?\2"""
+)
+
+# Unquoted value: must be a whole token, not code: no calls, indexing, or attribute access
 # (`get_password()`, `os.environ["X"]`), and not a number, boolean, or type name.
 _VALUE_CHARS = r"""[^\s"',;()\[\]{}]"""
 _ASSIGNMENT = re.compile(
     r"(?i)"
-    r"(\b[\w.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)[\w.-]*"
+    rf"({_SECRET_NAME}"
     r"""["']?\s*[:=]\s*["']?)"""
     r"(?![\d.]+\b)"
     r"(?!(?:true|false|none|null|str|string|int|bool|bytes|number)\b)"
@@ -39,5 +48,6 @@ def redact(text: str) -> str:
         text = pattern.sub(MASK, text)
     text = _BEARER.sub(rf"\g<1>{MASK}", text)
     text = _URL_PASSWORD.sub(rf"\g<1>{MASK}\g<2>", text)
+    text = _QUOTED_ASSIGNMENT.sub(rf"\g<1>\g<2>{MASK}\g<2>", text)
     text = _ASSIGNMENT.sub(rf"\g<1>{MASK}", text)
     return text

@@ -109,6 +109,64 @@ class TestScanSafety:
         assert "No matches" in result
 
 
+class TestIgnoreFile:
+    @pytest.fixture
+    def ignored_project(self, project):
+        (project / ".stacksplainignore").write_text(
+            "# private data\n"
+            "\n"
+            "customers.csv\n"
+            "secrets/\n"
+            "config/prod.yaml\n"
+            "*.sql\n"
+        )
+        (project / "customers.csv").write_text("divide,alice@example.com\n")
+        (project / "secrets").mkdir()
+        (project / "secrets" / "notes.py").write_text("divide = 'internal'\n")
+        (project / "config").mkdir()
+        (project / "config" / "prod.yaml").write_text("divide: prod\n")
+        (project / "config" / "dev.yaml").write_text("divide: dev\n")
+        (project / "dump.sql").write_text("-- divide\n")
+        return project
+
+    def test_search_skips_ignored_files_and_folders(self, ignored_project):
+        result = Locator(root=str(ignored_project))._search_codebase("divide")
+        assert "app.py" in result
+        assert "config/dev.yaml" in result
+        for hidden in ("customers.csv", "secrets/", "prod.yaml", "dump.sql"):
+            assert hidden not in result
+
+    def test_read_refuses_ignored_file(self, ignored_project):
+        result = Locator(root=str(ignored_project))._read_file_lines("config/prod.yaml", 1, 5)
+        assert ".stacksplainignore" in result
+        assert "divide: prod" not in result
+
+    def test_read_refuses_file_inside_ignored_folder(self, ignored_project):
+        result = Locator(root=str(ignored_project))._read_file_lines("secrets/notes.py", 1, 5)
+        assert ".stacksplainignore" in result
+        assert "internal" not in result
+
+    def test_read_refuses_symlink_to_ignored_file(self, ignored_project):
+        (ignored_project / "harmless.txt").symlink_to(ignored_project / "customers.csv")
+        result = Locator(root=str(ignored_project))._read_file_lines("harmless.txt", 1, 5)
+        assert "alice@example.com" not in result
+
+    def test_scan_summary_lists_reasons(self, ignored_project):
+        (ignored_project / ".env").write_text("SECRET=1\n")
+        searchable, excluded = Locator(root=str(ignored_project)).scan_summary()
+        reasons = dict(excluded)
+        assert reasons[".env"] == "may contain secrets"
+        assert reasons["customers.csv"] == "listed in .stacksplainignore"
+        assert reasons["secrets/"] == "listed in .stacksplainignore"
+        assert "app.py" not in reasons
+        assert searchable >= 2
+
+    def test_works_without_api_key_when_not_required(self, project):
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False):
+            locator = Locator(root=str(project), require_api_key=False)
+            assert "app.py:1:" in locator._search_codebase("def divide")
+
+
 class TestLocatorInit:
     def test_raises_without_api_key(self, tmp_path):
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False):

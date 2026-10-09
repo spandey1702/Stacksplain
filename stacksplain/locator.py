@@ -34,6 +34,16 @@ _SECRET_PATTERNS = (
 def _is_secret(name: str) -> bool:
     return any(fnmatch.fnmatch(name.lower(), p) for p in _SECRET_PATTERNS)
 
+
+_IGNORE_FILE = ".stacksplainignore"
+
+# Reasons a file is never opened; shown in --dry-run and in tool refusals.
+SECRET_FILE = "may contain secrets"
+IGNORED = f"listed in {_IGNORE_FILE}"
+TOO_LARGE = "over 1 MB"
+OUTSIDE = "outside the project"
+UNREADABLE = "unreadable"
+
 _SYSTEM_PROMPT = """You are an expert software engineer debugging a real codebase.
 A developer has pasted an error or stack trace. You have tools to search and
 read the actual project files on disk — use them before answering. Do not
@@ -74,33 +84,100 @@ Rules:
 
 
 class Locator:
-    def __init__(self, root: str = "."):
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY not set. Add it to your .env file or export it in your shell."
-            )
-        self._client = anthropic.Anthropic(api_key=api_key)
-        self._model = os.getenv("ANTHROPIC_API_MODEL", "claude-sonnet-5")
+    def __init__(self, root: str = ".", require_api_key: bool = True):
         self.root = Path(root).resolve()
+        self._ignore_patterns = self._load_ignore_patterns()
+        self._model = os.getenv("ANTHROPIC_API_MODEL", "claude-sonnet-5")
+        self._client = None
+        if require_api_key:
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "ANTHROPIC_API_KEY not set. Add it to your .env file or export it in your shell."
+                )
+            self._client = anthropic.Anthropic(api_key=api_key)
 
-    def _iter_files(self):
-        for dirpath, dirnames, filenames in os.walk(self.root):
-            dirnames[:] = [d for d in dirnames if d not in _IGNORE_DIRS and not d.endswith(".egg-info")]
-            for name in filenames:
-                path = Path(dirpath) / name
-                if self._is_searchable(path):
-                    yield path
+    def _load_ignore_patterns(self) -> list[str]:
+        """Read .stacksplainignore: gitignore-style globs, one per line, # for comments."""
+        ignore_file = self.root / _IGNORE_FILE
+        if not ignore_file.is_file():
+            return []
+        patterns = []
+        for line in ignore_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if line and not line.startswith(("#", "!")):
+                patterns.append(line.strip("/"))
+        return [p for p in patterns if p]
 
-    def _is_searchable(self, path: Path) -> bool:
-        if _is_secret(path.name):
+    def _is_ignored(self, path: Path) -> bool:
+        if not self._ignore_patterns:
             return False
         try:
-            real = path.resolve()
-            # Skip symlinks pointing outside the project, and very large files.
-            return self.root in real.parents and real.stat().st_size <= _MAX_FILE_BYTES
-        except OSError:
+            parts = path.relative_to(self.root).parts
+        except ValueError:
             return False
+        for pattern in self._ignore_patterns:
+            if "/" in pattern:
+                # A path pattern like "config/prod.yaml" or "deploy/*": match it or any parent folder.
+                prefixes = ("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+                if any(fnmatch.fnmatch(prefix, pattern) for prefix in prefixes):
+                    return True
+            elif any(fnmatch.fnmatch(part, pattern) for part in parts):
+                return True
+        return False
+
+    def _exclusion_reason(self, path: Path) -> str | None:
+        """Why this file must never be opened, or None if it's safe to search and read."""
+        try:
+            real = path.resolve()
+        except OSError:
+            return UNREADABLE
+        if self.root not in real.parents:
+            return OUTSIDE
+        # Check the path as named and as resolved, so a symlink can't hide a protected file.
+        if _is_secret(path.name) or _is_secret(real.name):
+            return SECRET_FILE
+        if self._is_ignored(path) or self._is_ignored(real):
+            return IGNORED
+        try:
+            if real.stat().st_size > _MAX_FILE_BYTES:
+                return TOO_LARGE
+        except OSError:
+            return UNREADABLE
+        return None
+
+    def _walk(self):
+        """Yield (relative path, exclusion reason or None, path) for everything under the root."""
+        for dirpath, dirnames, filenames in os.walk(self.root):
+            kept = []
+            for d in dirnames:
+                if d in _IGNORE_DIRS or d.endswith(".egg-info"):
+                    continue
+                dir_path = Path(dirpath) / d
+                if self._is_ignored(dir_path):
+                    yield f"{dir_path.relative_to(self.root).as_posix()}/", IGNORED, dir_path
+                else:
+                    kept.append(d)
+            dirnames[:] = kept
+            for name in filenames:
+                path = Path(dirpath) / name
+                yield path.relative_to(self.root).as_posix(), self._exclusion_reason(path), path
+
+    def _iter_files(self):
+        for _, reason, path in self._walk():
+            if reason is None:
+                yield path
+
+    def scan_summary(self) -> tuple[int, list[tuple[str, str]]]:
+        """Count the files --scan may open, and list the ones it never will, with reasons."""
+        searchable = 0
+        excluded: list[tuple[str, str]] = []
+        for rel, reason, _ in self._walk():
+            if reason is None:
+                searchable += 1
+            else:
+                excluded.append((rel, reason))
+        return searchable, sorted(excluded)
 
     def _search_codebase(self, pattern: str) -> str:
         """Search the codebase for a filename, symbol, or text pattern.
@@ -148,10 +225,9 @@ class Locator:
             return f"Error: '{path}' resolves outside the project root."
         if not target.is_file():
             return f"Error: '{path}' is not a file."
-        if _is_secret(target.name):
-            return f"Error: '{path}' may contain secrets and can't be read."
-        if target.stat().st_size > _MAX_FILE_BYTES:
-            return f"Error: '{path}' is too large to read."
+        reason = self._exclusion_reason(self.root / path)
+        if reason:
+            return f"Error: '{path}' can't be read ({reason})."
 
         try:
             lines = target.read_text(encoding="utf-8").splitlines()
